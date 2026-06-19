@@ -227,32 +227,122 @@ function ScenarioPicker({ scenarios, value, onChange }) {
   );
 }
 
-function Lobby({ gs, identity, scenarios, onLeave, refresh }) {
-  const me = gs.players.find((p) => p.id === identity.playerId);
-  const isHost = me?.is_host;
-  const [scenarioId, setScenarioId] = useState(scenarios[0]?.id || '');
-  const [busy, setBusy] = useState(false);
+// Host-only: generate an AI scenario (or pick a ready-made one) then start the round.
+function ScenarioSetup({ identity, scenarios, serverPreview, refresh, label = '▶ Mulai Game' }) {
+  const [topic, setTopic] = useState('');
+  const [difficulty, setDifficulty] = useState('');
+  const [genBusy, setGenBusy] = useState(false);
+  const [startBusy, setStartBusy] = useState(false);
+  const [preview, setPreview] = useState(serverPreview || null);
+  const [fallback, setFallback] = useState(false);
+  const [staticId, setStaticId] = useState('');
+  const [showStatic, setShowStatic] = useState(false);
   const [e, setE] = useState('');
 
-  useEffect(() => {
-    if (!scenarioId && scenarios[0]) setScenarioId(scenarios[0].id);
-  }, [scenarios, scenarioId]);
+  const generate = async () => {
+    setE('');
+    setGenBusy(true);
+    setStaticId('');
+    try {
+      const d = await jpost(`/api/rooms/${identity.code}/generate`, {
+        playerId: identity.playerId,
+        topic,
+        difficulty,
+      });
+      setPreview(d.scenario);
+      setFallback(!!d.fallback);
+      await refresh();
+    } catch (err) {
+      setE(err.message);
+    } finally {
+      setGenBusy(false);
+    }
+  };
 
   const start = async () => {
     setE('');
-    setBusy(true);
+    setStartBusy(true);
     try {
       await jpost(`/api/rooms/${identity.code}/start`, {
         playerId: identity.playerId,
-        scenarioId,
+        scenarioId: staticId || undefined,
       });
       await refresh();
     } catch (err) {
       setE(err.message);
     } finally {
-      setBusy(false);
+      setStartBusy(false);
     }
   };
+
+  const canStart = !!preview || !!staticId;
+
+  return (
+    <>
+      <label>Generate Soal Incident (AI)</label>
+      <div className="row">
+        <input
+          type="text"
+          style={{ flex: 1, minWidth: 180 }}
+          placeholder="Topik (opsional): redis, kafka, DNS…"
+          value={topic}
+          onChange={(ev) => setTopic(ev.target.value)}
+        />
+        <select value={difficulty} onChange={(ev) => setDifficulty(ev.target.value)} style={{ width: 150 }}>
+          <option value="">Acak</option>
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <button onClick={generate} disabled={genBusy}>
+          {genBusy ? '⏳ Membuat soal…' : '✨ Generate Soal (AI)'}
+        </button>
+        <span className="muted" style={{ marginLeft: 10, fontSize: 12 }}>
+          Jumlah langkah menyesuaikan jumlah pemain.
+        </span>
+      </div>
+
+      {preview && (
+        <div className={'toast ' + (fallback ? 'rv' : 'ok')} style={{ marginTop: 12 }}>
+          <b>{preview.title}</b> · {preview.difficulty || '—'} · {preview.totalSteps} langkah
+          <div className="muted" style={{ marginTop: 4 }}>{preview.description}</div>
+          {fallback && <div style={{ marginTop: 4 }}>⚠ AI gagal — memakai skenario cadangan.</div>}
+        </div>
+      )}
+
+      <div style={{ marginTop: 12 }}>
+        <button className="ghost" onClick={() => setShowStatic((v) => !v)}>
+          {showStatic ? '− sembunyikan' : '+ atau pilih skenario siap-pakai'}
+        </button>
+      </div>
+      {showStatic && (
+        <div style={{ marginTop: 10 }}>
+          <ScenarioPicker
+            scenarios={scenarios}
+            value={staticId}
+            onChange={(id) => {
+              setStaticId(id);
+              setPreview(null);
+            }}
+          />
+        </div>
+      )}
+
+      {e && <div className="err">⚠ {e}</div>}
+      <div style={{ marginTop: 16 }}>
+        <button onClick={start} disabled={startBusy || !canStart}>
+          {startBusy ? '…' : label}
+        </button>
+      </div>
+    </>
+  );
+}
+
+function Lobby({ gs, identity, scenarios, onLeave, refresh }) {
+  const me = gs.players.find((p) => p.id === identity.playerId);
+  const isHost = me?.is_host;
 
   return (
     <>
@@ -274,23 +364,31 @@ function Lobby({ gs, identity, scenarios, onLeave, refresh }) {
       <div className="card">
         {isHost ? (
           <>
-            <label>Pilih Skenario Incident</label>
-            <ScenarioPicker scenarios={scenarios} value={scenarioId} onChange={setScenarioId} />
-            {e && <div className="err">⚠ {e}</div>}
-            <div style={{ marginTop: 16 }}>
-              <button onClick={start} disabled={busy || !scenarioId}>
-                {busy ? '…' : '▶ Mulai Game'}
-              </button>
-              <button className="ghost" style={{ marginLeft: 8 }} onClick={onLeave}>
-                Keluar
-              </button>
+            <ScenarioSetup
+              identity={identity}
+              scenarios={scenarios}
+              serverPreview={gs.scenario}
+              refresh={refresh}
+            />
+            <div style={{ marginTop: 10 }}>
+              <button className="ghost" onClick={onLeave}>Keluar</button>
             </div>
           </>
         ) : (
-          <div className="spread">
-            <span className="muted">Menunggu host memulai game…</span>
-            <button className="ghost" onClick={onLeave}>Keluar</button>
-          </div>
+          <>
+            {gs.scenario ? (
+              <div className="toast ok">
+                <b>{gs.scenario.title}</b> · {gs.scenario.totalSteps} langkah
+                <div className="muted" style={{ marginTop: 4 }}>{gs.scenario.description}</div>
+              </div>
+            ) : (
+              <span className="muted">Host sedang menyiapkan soal…</span>
+            )}
+            <div className="spread" style={{ marginTop: 10 }}>
+              <span className="muted">Menunggu host memulai game…</span>
+              <button className="ghost" onClick={onLeave}>Keluar</button>
+            </div>
+          </>
         )}
       </div>
     </>
@@ -418,21 +516,6 @@ function Recap({ gs, identity, scenarios, onLeave, refresh }) {
   const isHost = me?.is_host;
   const ranked = [...gs.players].sort((a, b) => b.score - a.score);
   const total = gs.players.reduce((s, p) => s + p.score, 0);
-  const [scenarioId, setScenarioId] = useState(scenarios[0]?.id || '');
-  const [busy, setBusy] = useState(false);
-
-  const again = async () => {
-    setBusy(true);
-    try {
-      await jpost(`/api/rooms/${identity.code}/start`, {
-        playerId: identity.playerId,
-        scenarioId,
-      });
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <>
@@ -459,11 +542,16 @@ function Recap({ gs, identity, scenarios, onLeave, refresh }) {
       <div className="card">
         {isHost ? (
           <>
-            <label>Main lagi — pilih skenario</label>
-            <ScenarioPicker scenarios={scenarios} value={scenarioId} onChange={setScenarioId} />
-            <div style={{ marginTop: 14 }}>
-              <button onClick={again} disabled={busy}>{busy ? '…' : '↻ Main Lagi'}</button>
-              <button className="ghost" style={{ marginLeft: 8 }} onClick={onLeave}>Keluar</button>
+            <label>Main lagi — generate soal baru</label>
+            <ScenarioSetup
+              identity={identity}
+              scenarios={scenarios}
+              serverPreview={null}
+              refresh={refresh}
+              label="↻ Main Lagi"
+            />
+            <div style={{ marginTop: 10 }}>
+              <button className="ghost" onClick={onLeave}>Keluar</button>
             </div>
           </>
         ) : (

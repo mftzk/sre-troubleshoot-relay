@@ -4,8 +4,8 @@ import {
   getPlayers,
   nextPlayerId,
   wrongAttempts,
+  getActiveScenario,
 } from '../../../../../lib/game.js';
-import { getScenario } from '../../../../../lib/scenarios.js';
 import { gradeAnswer } from '../../../../../lib/llm.js';
 
 export const runtime = 'nodejs';
@@ -54,7 +54,8 @@ export async function POST(req, ctx) {
     const me = players.find((p) => p.id === playerId);
     if (!me) return Response.json({ error: 'Pemain tidak ditemukan.' }, { status: 404 });
 
-    const scenario = getScenario(room.scenario_id);
+    const scenario = getActiveScenario(room);
+    if (!scenario) return Response.json({ error: 'Soal tidak ditemukan.' }, { status: 409 });
     const step = scenario.steps[room.current_step_index];
     const maxAttempts = parseInt(process.env.MAX_ATTEMPTS || '3', 10);
 

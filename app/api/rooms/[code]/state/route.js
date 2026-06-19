@@ -4,8 +4,8 @@ import {
   getPlayers,
   wrongAttempts,
   recentLog,
+  getActiveScenario,
 } from '../../../../../lib/game.js';
-import { getScenario } from '../../../../../lib/scenarios.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,7 +33,7 @@ export async function GET(req, ctx) {
       is_host: p.is_host,
     }));
 
-    const scenario = room.scenario_id ? getScenario(room.scenario_id) : null;
+    const scenario = getActiveScenario(room);
     const maxAttempts = parseInt(process.env.MAX_ATTEMPTS || '3', 10);
 
     let currentStep = null;
@@ -68,7 +68,9 @@ export async function GET(req, ctx) {
             id: scenario.id,
             title: scenario.title,
             description: scenario.description,
+            difficulty: scenario.difficulty || null,
             totalSteps: scenario.steps.length,
+            generated: !!scenario.generated,
           }
         : null,
       players,
