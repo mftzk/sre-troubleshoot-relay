@@ -1,0 +1,84 @@
+[
+  {
+    "id": "k8s-pod-down",
+    "title": "Pod Kubernetes CrashLoopBackOff",
+    "description": "Service payment-api di namespace production tiba-tiba mengembalikan 503. Alert PagerDuty menyala. Tim SRE harus menemukan & memperbaiki akar masalahnya secara bergiliran.",
+    "difficulty": "easy",
+    "steps": [
+      {
+        "role": "Triage",
+        "objective": "Cek pod mana yang bermasalah di namespace production.",
+        "clues": [
+          "Mulai dari melihat daftar pod beserta statusnya.",
+          "Gunakan kubectl untuk list pods di sebuah namespace tertentu.",
+          "Perintahnya kira-kira: kubectl get pods -n production"
+        ],
+        "expected": "List pod di namespace production, mis. `kubectl get pods -n production`. Tujuannya menemukan pod payment-api yang dalam status CrashLoopBackOff.",
+        "keywords": ["kubectl", "get", "pod", "production"]
+      },
+      {
+        "role": "Diagnosa",
+        "objective": "Identifikasi akar masalah dari pod yang crash.",
+        "clues": [
+          "Lihat log atau detail (describe) pod yang crash.",
+          "kubectl logs / kubectl describe akan menampilkan pesan error.",
+          "Lognya menunjukkan aplikasi gagal connect ke database. Jawaban benar: 'database tidak connect' (dilihat dari logs)."
+        ],
+        "expected": "Diagnosa bahwa aplikasi tidak bisa connect ke database, dilihat dari `kubectl logs payment-api -n production` (mis. error 'connection refused' / 'dial tcp db:5432'). Jawaban benar menyebutkan masalah koneksi database atau melihat logs pod.",
+        "keywords": ["database", "connect", "koneksi", "logs", "log", "db"]
+      },
+      {
+        "role": "Remediasi",
+        "objective": "Perbaiki koneksi database lalu pulihkan service.",
+        "clues": [
+          "Periksa konfigurasi koneksi DB (secret / connection string).",
+          "Perbaiki credential atau host DB, lalu lakukan rollout ulang deployment.",
+          "Perbaiki secret DB lalu: kubectl rollout restart deployment payment-api -n production"
+        ],
+        "expected": "Perbaiki connection string/secret database yang salah, lalu restart deployment, mis. update secret + `kubectl rollout restart deployment payment-api -n production`. Jawaban benar menyebut memperbaiki koneksi/secret DB dan restart/rollout.",
+        "keywords": ["rollout", "restart", "secret", "deploy", "perbaiki", "fix", "connection", "config"]
+      }
+    ]
+  },
+  {
+    "id": "node-disk-full",
+    "title": "Node Disk Pressure",
+    "description": "Beberapa pod di-evict dan node masuk kondisi DiskPressure. Aplikasi mulai gagal scheduling. Tim SRE harus menelusuri dan melegakan disk.",
+    "difficulty": "medium",
+    "steps": [
+      {
+        "role": "Triage",
+        "objective": "Temukan node mana yang kena DiskPressure.",
+        "clues": [
+          "Lihat kondisi/status semua node di cluster.",
+          "kubectl get nodes + kubectl describe node akan menampilkan condition DiskPressure.",
+          "Perintahnya: kubectl describe node <node> (cek Conditions: DiskPressure=True)"
+        ],
+        "expected": "Cek kondisi node, mis. `kubectl get nodes` lalu `kubectl describe node <node>` dan menemukan condition DiskPressure=True. Jawaban benar menyebut melihat node/kondisi disk.",
+        "keywords": ["kubectl", "node", "describe", "disk", "df"]
+      },
+      {
+        "role": "Diagnosa",
+        "objective": "Tentukan apa yang memenuhi disk node tersebut.",
+        "clues": [
+          "Cek penggunaan disk & apa yang memakannya (log, image, container layer).",
+          "Biasanya akibat log/journal membengkak atau image lama menumpuk.",
+          "Jawaban benar: disk penuh karena log/journal atau image container menumpuk."
+        ],
+        "expected": "Identifikasi penyebab disk penuh: log/journal yang membengkak atau image container lama yang menumpuk (mis. via `du -sh /var/lib/docker` atau `journalctl --disk-usage`). Jawaban benar menyebut log/image/journal memenuhi disk.",
+        "keywords": ["log", "journal", "image", "du", "var", "docker", "containerd"]
+      },
+      {
+        "role": "Remediasi",
+        "objective": "Legakan disk dan kembalikan node ke kondisi normal.",
+        "clues": [
+          "Bersihkan artefak yang tidak terpakai untuk membebaskan ruang.",
+          "Prune image yang tidak terpakai / rotate-bersihkan log lama.",
+          "Perintahnya mis: crictl rmi --prune atau docker image prune -a, lalu vacuum journal."
+        ],
+        "expected": "Bebaskan ruang disk, mis. `docker image prune -a` / `crictl rmi --prune` dan/atau `journalctl --vacuum-size=200M`, sampai DiskPressure hilang. Jawaban benar menyebut membersihkan/prune image atau log.",
+        "keywords": ["prune", "rmi", "clean", "bersih", "vacuum", "rm", "delete", "hapus"]
+      }
+    ]
+  }
+]

@@ -1,0 +1,47 @@
+import { initDb, query } from '../../../../../lib/db.js';
+import { getRoomByCode, getPlayers } from '../../../../../lib/game.js';
+import { getScenario } from '../../../../../lib/scenarios.js';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function POST(req, ctx) {
+  try {
+    await initDb();
+    const { code } = await ctx.params;
+    const body = await req.json().catch(() => ({}));
+    const { playerId, scenarioId } = body;
+
+    const room = await getRoomByCode(code);
+    if (!room) return Response.json({ error: 'Room tidak ditemukan.' }, { status: 404 });
+
+    const players = await getPlayers(room.id);
+    const me = players.find((p) => p.id === playerId);
+    if (!me || !me.is_host) {
+      return Response.json({ error: 'Hanya host yang bisa memulai game.' }, { status: 403 });
+    }
+    if (room.status === 'playing') {
+      return Response.json({ error: 'Game sudah berjalan.' }, { status: 409 });
+    }
+    if (players.length < 1) {
+      return Response.json({ error: 'Butuh minimal 1 pemain.' }, { status: 400 });
+    }
+    const scenario = getScenario(scenarioId);
+    if (!scenario) return Response.json({ error: 'Scenario tidak valid.' }, { status: 400 });
+
+    const firstTurn = players[0].id; // join_order 0 (host) starts
+    await query(
+      `UPDATE rooms SET scenario_id = $1, status = 'playing',
+       current_step_index = 0, current_turn_player_id = $2 WHERE id = $3`,
+      [scenarioId, firstTurn, room.id]
+    );
+    // Fresh start: clear any prior log + reset scores (allows replay).
+    await query('DELETE FROM game_log WHERE room_id = $1', [room.id]);
+    await query('UPDATE players SET score = 0 WHERE room_id = $1', [room.id]);
+
+    return Response.json({ ok: true });
+  } catch (err) {
+    console.error('start error:', err);
+    return Response.json({ error: 'Server error: ' + (err?.message || 'unknown') }, { status: 500 });
+  }
+}

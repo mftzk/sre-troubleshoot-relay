@@ -1,0 +1,17 @@
+{
+  "name": "sre-troubleshoot-relay",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^16.2.9",
+    "openai": "^4.77.0",
+    "pg": "^8.13.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  }
+}
